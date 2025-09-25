@@ -7,8 +7,9 @@ package at.bitfire.davdroid.resource
 import android.provider.CalendarContract.Events
 import androidx.core.content.contentValuesOf
 import at.bitfire.ical4android.Event
-import at.bitfire.ical4android.LegacyAndroidCalendar
+import at.bitfire.synctools.icalendar.AssociatedEvents
 import at.bitfire.synctools.mapping.calendar.LegacyAndroidEventBuilder2
+import at.bitfire.synctools.mapping.calendar.LegacyAndroidEventProcessor
 import at.bitfire.synctools.storage.LocalStorageException
 import at.bitfire.synctools.storage.calendar.AndroidEvent2
 import at.bitfire.synctools.storage.calendar.AndroidRecurringCalendar
@@ -48,53 +49,32 @@ class LocalEvent(
         recurringCalendar.updateEventAndExceptions(id, eventAndExceptions)
     }
 
-
-    private var _event: Event? = null
-    /**
-     * Retrieves the event from the content provider and converts it to a legacy data object.
-     *
-     * Caches the result: the content provider is only queried at the first call and then
-     * this method always returns the same object.
-     *
-     * @throws LocalStorageException    if there is no local event with the ID from [androidEvent]
-     */
-    @Synchronized
-    fun getCachedEvent(): Event {
-        _event?.let { return it }
-
-        val legacyCalendar = LegacyAndroidCalendar(androidEvent.calendar)
-        val event = legacyCalendar.getEvent(androidEvent.id)
-            ?: throw LocalStorageException("Event ${androidEvent.id} not found")
-
-        _event = event
-        return event
-    }
-
     /**
      * Generates the [Event] that should actually be uploaded:
      *
-     * 1. Takes the [getCachedEvent].
+     * 1. Takes the event from the calendar provider.
      * 2. Calculates the new SEQUENCE.
      *
-     * _Note: This method currently modifies the object returned by [getCachedEvent], but
-     * this may change in the future._
-     *
      * @return data object that should be used for uploading
+     *
+     * @throws LocalStorageException    if there is no local event with the given [id]
      */
-    fun eventToUpload(): Event {
-        val event = getCachedEvent()
+    fun eventToUpload(): AssociatedEvents {
+        val eventAndExceptions = recurringCalendar.getById(id) ?: throw LocalStorageException("Event $id not found")
 
-        val nonGroupScheduled = event.attendees.isEmpty()
-        val weAreOrganizer = event.isOrganizer == true
+        // map local event to iCalendar
+        val processor = LegacyAndroidEventProcessor(recurringCalendar.calendar.account.name)
+        val associatedEvents = processor.process(eventAndExceptions)
 
         // Increase sequence (event.sequence null/non-null behavior is defined by the Event, see KDoc of event.sequence):
         // - If it's null, the event has just been created in the database, so we can start with SEQUENCE:0 (default).
         // - If it's non-null, the event already exists on the server, so increase by one.
-        val sequence = event.sequence
+        /*val sequence = event.sequence
         if (sequence != null && (nonGroupScheduled || weAreOrganizer))
-            event.sequence = sequence + 1
+            event.sequence = sequence + 1*/
+        // TODO
 
-        return event
+        return associatedEvents
     }
 
     /**
@@ -117,7 +97,10 @@ class LocalEvent(
      */
     override fun prepareForUpload(): String {
         // make sure that UID is set
-        val uid: String = getCachedEvent().uid ?: run {
+
+        // TODO iCalendar UID
+
+        /*val uid: String = getCachedEvent().uid ?: run {
             // generate new UID
             val newUid = UUID.randomUUID().toString()
 
@@ -127,6 +110,17 @@ class LocalEvent(
 
             // update in cached event data object
             getCachedEvent().uid = newUid
+
+            newUid
+        }*/
+
+        val event = recurringCalendar.calendar.getEventRow(id) ?: throw LocalStorageException("Event $id not found")
+        val uid = event.getAsString(Events.UID_2445) ?: run {
+            val newUid = UUID.randomUUID().toString()
+
+            // persist to calendar provider
+            val values = contentValuesOf(Events.UID_2445 to newUid)
+            androidEvent.update(values)
 
             newUid
         }

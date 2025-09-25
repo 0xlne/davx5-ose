@@ -33,6 +33,7 @@ import at.bitfire.ical4android.EventReader
 import at.bitfire.ical4android.EventWriter
 import at.bitfire.ical4android.util.DateUtils
 import at.bitfire.synctools.exception.InvalidRemoteResourceException
+import at.bitfire.synctools.icalendar.ICalendarWriter
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -182,7 +183,8 @@ class CalendarSyncManager @AssistedInject constructor(
         super.onSuccessfulUpload(local, newFileName, eTag, scheduleTag)
 
         // update local SEQUENCE to new value after successful upload
-        local.updateSequence(local.getCachedEvent().sequence)
+        //local.updateSequence(local.getCachedEvent().sequence)
+        // TODO
     }
 
     override fun generateUpload(resource: LocalEvent): RequestBody =
@@ -192,7 +194,7 @@ class CalendarSyncManager @AssistedInject constructor(
 
             // write iCalendar to string and convert to request body
             val iCalWriter = StringWriter()
-            EventWriter(Constants.iCalProdId).write(event, iCalWriter)
+            ICalendarWriter(Constants.iCalProdId).write(event, iCalWriter)
             iCalWriter.toString().toRequestBody(DavCalendar.MIME_ICALENDAR_UTF8)
         }
 
